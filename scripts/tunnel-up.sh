@@ -21,7 +21,7 @@ trap 'kill $TUNNEL_PID 2>/dev/null || true' EXIT
 
 ADDR=""
 for _ in $(seq 1 30); do
-    ADDR="$(grep -o 'tcp://[^[:space:]]*' "$LOG" | head -1 | sed 's|tcp://||' | tr -d '\r')"
+    ADDR="$(grep -o 'tcp://[^[:space:]]*' "$LOG" | head -1 | sed 's|tcp://||' | tr -d '\r' || true)"
     [ -n "$ADDR" ] && break
     sleep 1
 done
