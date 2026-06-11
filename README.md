@@ -28,6 +28,25 @@ against a masked clone of prod, minutes after pushing.
    against the PR's branch through the pgbranch proxy — the database name
    `postgres@pr-<N>` routes to the right branch.
 
+## What happened in [PR #1](https://github.com/abd-ulbasit/pgbranch-demo/pull/1)
+
+A real, recorded run of this workflow (read the PR comments):
+
+1. The PR adds idempotent signup, which needs `UNIQUE (email)`. The
+   migration **passed on an empty local dev database**.
+2. Opening the PR created branch `pr-1` — a masked CoW clone of an 80k-user,
+   400k-order production database — in seconds, and commented the
+   connection string.
+3. Running the same migration against `postgres@pr-1` **failed**: production
+   had 37 legacy duplicate signups no dev fixture ever contained. The error
+   leaked only a *masked* email.
+4. The fix (merge duplicates, repoint orders, then add the constraint) was
+   pushed; the branch auto-reset to a pristine snapshot and the migration
+   went green with all 400k orders preserved.
+5. Merging the PR destroyed the branch. Production was never touched.
+
+That is the entire pitch: the deploy-time surprise moved to the PR.
+
 ## Try a migration against the PR branch by hand
 
 ```sh
@@ -39,4 +58,29 @@ PGDATABASE='postgres@pr-1' ./scripts/migrate.sh
 
 ```sh
 DATABASE_URL='postgres://postgres:pw@localhost:6432/postgres@pr-1' go run .
+```
+
+## Replaying the demo stack locally
+
+Everything ran on one laptop (Docker via Colima); GitHub reached it through
+a [smee.io](https://smee.io) webhook proxy:
+
+```sh
+# 1. a "production" postgres with realistic data (incl. duplicate emails)
+docker run -d --name pgdemo-prod -e POSTGRES_PASSWORD=... -p 5499:5432 postgres:16
+#    + add "host replication all all scram-sha-256" to its pg_hba.conf
+
+# 2. pgbranch control plane
+PGBRANCH_TOKEN=... branchd --api-addr :7070 --pg-addr :6432
+pgb source add prod --host host.docker.internal --port 5499 --pg-version 16
+pgb source set-mask prod mask-pii.sql        # deterministic PII masking
+
+# 3. branch-per-PR webhook service + forwarder
+GHOOK_WEBHOOK_SECRET=... GHOOK_SOURCE=prod \
+GHOOK_PGBRANCH_SERVER=http://localhost:7070 GHOOK_PGBRANCH_TOKEN=... \
+GHOOK_GITHUB_TOKEN=$(gh auth token) GHOOK_PROXY_HOST=localhost:6432 \
+GHOOK_REPOS=<owner>/<repo> GHOOK_RESET_ON_PUSH=true pgbranch-github
+npx smee-client --url https://smee.io/<channel> --target http://localhost:8080/webhook
+
+# 4. repo webhook: pull_request events -> the smee channel (same secret)
 ```
