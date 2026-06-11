@@ -18,6 +18,13 @@ const pool = new Pool({
   database: `postgres@${branch}`,
   max: 3,
   connectionTimeoutMillis: 8000,
+  // serverless + tunneled TCP: don't keep idle connections around
+  idleTimeoutMillis: 1000,
 });
+
+// An idle pooled connection dying (branch reset, tunnel drop) emits 'error'
+// on the pool; unhandled, that crashes the function process. Log and let the
+// next query open a fresh connection instead.
+pool.on('error', (err) => console.error('idle client error', err.message));
 
 module.exports = { pool, branch };
