@@ -13,7 +13,27 @@ data** (duplicate rows, NULLs, weird encodings — things test fixtures never
 have). You find out during the deploy. With pgbranch you find out on the PR,
 against a masked clone of prod, minutes after pushing.
 
-## How this repo is wired
+## How this repo is wired (current: EKS)
+
+The whole pgbranch stack now runs **in a single-node EKS cluster**
+([Terraform](https://github.com/abd-ulbasit/pgbranch/tree/main/deploy/terraform/eks),
+[walkthrough](https://github.com/abd-ulbasit/pgbranch/blob/main/docs/eks.md)):
+branchd, the webhook service, the "production" Postgres, and every branch pod.
+
+- GitHub posts `pull_request` webhooks **directly** to the in-cluster
+  webhook service behind a LoadBalancer (HMAC-verified) — no forwarders.
+- CI (`pr-db-check.yml`) and Vercel reach branches through the proxy's
+  **stable LoadBalancer DNS**, set once: `PGBRANCH_PROXY_HOST` /
+  `PGBRANCH_HOST` + `PGBRANCH_PORT`.
+- The Vercel app still derives its branch from `VERCEL_GIT_PULL_REQUEST_ID`
+  — zero per-PR configuration anywhere.
+
+[PR #3](https://github.com/abd-ulbasit/pgbranch-demo/pull/3) ran this
+wiring end-to-end (webhook → branch pod → CI migration → preview on the
+branch → merge → destroy). Three pgbranch bugs were found and fixed doing
+it — see the [EKS doc](https://github.com/abd-ulbasit/pgbranch/blob/main/docs/eks.md#what-deploying-here-taught-us-three-real-bugs).
+
+## How it was wired originally (zero-infra: laptop + tunnels)
 
 1. A `pgbranch` source named `prod` is seeded from the production Postgres
    (`pgb source add prod ...`), with a masking script that scrubs PII
@@ -60,7 +80,10 @@ PGDATABASE='postgres@pr-1' ./scripts/migrate.sh
 DATABASE_URL='postgres://postgres:pw@localhost:6432/postgres@pr-1' go run .
 ```
 
-## Replaying the demo stack locally
+## Replaying the zero-infra variant locally
+
+`scripts/tunnel-up.sh` restarts the free public TCP tunnel and rewires
+GitHub + Vercel to it — only needed for the no-infra setup below.
 
 Everything ran on one laptop (Docker via Colima); GitHub reached it through
 a [smee.io](https://smee.io) webhook proxy:
