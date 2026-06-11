@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pgbranch-demo</title>
+  <style>
+    body { font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+           max-width: 44rem; margin: 4rem auto; padding: 0 1rem;
+           background: #1e1e2e; color: #cdd6f4; }
+    a { color: #94e2d5; }
+    code { background: #313244; padding: .1rem .35rem; border-radius: 4px; }
+    .dim { color: #9399b2; }
+  </style>
+</head>
+<body>
+  <h1>pgbranch-demo</h1>
+  <p>Every pull request on <a href="https://github.com/abd-ulbasit/pgbranch-demo">this repo</a>
+     gets its own disposable, PII-masked clone of the production database —
+     created in seconds by <a href="https://github.com/abd-ulbasit/pgbranch">pgbranch</a>
+     running on EKS. This deployment is connected to the database branch
+     matching its git context.</p>
+  <ul>
+    <li><a href="/api/db">/api/db</a> <span class="dim">— which branch am I on, and what's in it?</span></li>
+    <li><a href="/api/users">/api/users</a> <span class="dim">— signup volume</span></li>
+    <li><a href="/api/stats">/api/stats</a> <span class="dim">— top customers by lifetime spend</span></li>
+    <li><code>POST /api/signup</code> <span class="dim">— idempotent signup (writes stay in this branch)</span></li>
+  </ul>
+  <p class="dim">Previews answer from <code>postgres@pr-&lt;N&gt;</code>;
+     production answers from <code>postgres@main-stable</code>.</p>
+</body>
+</html>

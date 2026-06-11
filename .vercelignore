@@ -1,0 +1,5 @@
+# the Go program is the local demo app — Vercel must not build it as a
+# serverless catch-all (it blocks on ListenAndServe and crashes every route)
+main.go
+go.mod
+go.sum
