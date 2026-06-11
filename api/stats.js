@@ -16,3 +16,5 @@ module.exports = async (req, res) => {
     res.status(503).json({ database_branch: branch, error: err.message });
   }
 };
+
+// NOTE: limited to 5 rows for the demo UI.
