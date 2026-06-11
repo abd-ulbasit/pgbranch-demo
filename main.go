@@ -29,7 +29,9 @@ func main() {
 		}
 		var id int64
 		err := db.QueryRowContext(r.Context(),
-			`INSERT INTO users (email, full_name) VALUES ($1, $2) RETURNING id`,
+			`INSERT INTO users (email, full_name) VALUES ($1, $2)
+			 ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name
+			 RETURNING id`,
 			in.Email, in.FullName).Scan(&id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
