@@ -25,9 +25,10 @@ jobs:
           export PGHOST="${PGBRANCH_PROXY_HOST%%:*}"
           export PGPORT="${PGBRANCH_PROXY_HOST##*:}"
           export PGUSER="${{ vars.PGBRANCH_PG_USER || 'postgres' }}"
-          # the database name routes through the pgbranch proxy to this
-          # PR's branch: <dbname>@pr-<number>
-          export PGDATABASE="postgres@pr-${{ github.event.pull_request.number }}"
+          # the database name routes through the pgbranch proxy to this PR's
+          # branch, named after the git branch (ghook git-branch naming)
+          BRANCH=$(echo "${{ github.head_ref }}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-41 | sed 's/-*$//')
+          export PGDATABASE="postgres@$BRANCH"
           # the webhook acks instantly and creates the branch async (~10-15s
           # as a pod) — wait for it to accept connections before migrating
           for i in $(seq 1 24); do

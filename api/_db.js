@@ -5,9 +5,16 @@
 // (PGBRANCH_HOST, PGBRANCH_PORT, PGPASSWORD) plus the PR number.
 const { Pool } = require('pg');
 
-const prNumber = process.env.VERCEL_GIT_PULL_REQUEST_ID;
-const branch = prNumber
-  ? `pr-${prNumber}`
+// pgbranch names PR branches after the git ref (sanitized the same way),
+// and VERCEL_GIT_COMMIT_REF is present from the very first preview build —
+// no PR-association timing race, nothing injected per deployment.
+const sanitize = (ref) =>
+  ref.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 41).replace(/-+$/, '');
+
+const ref = process.env.VERCEL_GIT_COMMIT_REF;
+const isPreview = process.env.VERCEL_ENV === 'preview';
+const branch = isPreview && ref
+  ? sanitize(ref)
   : process.env.PGBRANCH_DEFAULT_BRANCH || 'main-stable';
 
 const pool = new Pool({
