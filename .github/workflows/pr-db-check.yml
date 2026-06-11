@@ -1,0 +1,31 @@
+# Runs the repo's migrations against this PR's pgbranch database branch —
+# real production-shaped data, created in ~2s by the pgbranch webhook when
+# the PR was opened.
+#
+# Requires a runner that can reach the pgbranch proxy (self-hosted, or a
+# branchd deployed on your cluster) and two repository settings:
+#   vars.PGBRANCH_PROXY_HOST   e.g. "pgbranch.internal:6432"
+#   secrets.PGBRANCH_PG_PASSWORD
+# The job is skipped when they are not configured, so forks stay green.
+name: pr-db-check
+on:
+  pull_request:
+
+jobs:
+  migrate-against-branch:
+    if: ${{ vars.PGBRANCH_PROXY_HOST != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply migrations to the PR's database branch
+        env:
+          PGBRANCH_PROXY_HOST: ${{ vars.PGBRANCH_PROXY_HOST }}
+          PGPASSWORD: ${{ secrets.PGBRANCH_PG_PASSWORD }}
+        run: |
+          export PGHOST="${PGBRANCH_PROXY_HOST%%:*}"
+          export PGPORT="${PGBRANCH_PROXY_HOST##*:}"
+          export PGUSER=postgres
+          # the database name routes through the pgbranch proxy to this
+          # PR's branch: <dbname>@pr-<number>
+          export PGDATABASE="postgres@pr-${{ github.event.pull_request.number }}"
+          ./scripts/migrate.sh
