@@ -28,4 +28,10 @@ jobs:
           # the database name routes through the pgbranch proxy to this
           # PR's branch: <dbname>@pr-<number>
           export PGDATABASE="postgres@pr-${{ github.event.pull_request.number }}"
+          # the webhook acks instantly and creates the branch async (~10-15s
+          # as a pod) — wait for it to accept connections before migrating
+          for i in $(seq 1 24); do
+            psql -qAtc "SELECT 1" >/dev/null 2>&1 && break
+            echo "waiting for branch database ($i)..."; sleep 5
+          done
           ./scripts/migrate.sh
