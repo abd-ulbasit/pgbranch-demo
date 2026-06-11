@@ -24,7 +24,7 @@ jobs:
         run: |
           export PGHOST="${PGBRANCH_PROXY_HOST%%:*}"
           export PGPORT="${PGBRANCH_PROXY_HOST##*:}"
-          export PGUSER=postgres
+          export PGUSER="${{ vars.PGBRANCH_PG_USER || 'postgres' }}"
           # the database name routes through the pgbranch proxy to this
           # PR's branch: <dbname>@pr-<number>
           export PGDATABASE="postgres@pr-${{ github.event.pull_request.number }}"
