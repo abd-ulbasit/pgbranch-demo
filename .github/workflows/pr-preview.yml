@@ -22,6 +22,11 @@ on:
 # isolated (pgbranch); per-PR preview URLs would add a Traefik ingress.
 concurrency: pr-preview
 
+# the comment step needs write; default GITHUB_TOKEN is read-only
+permissions:
+  pull-requests: write
+  contents: read
+
 jobs:
   preview:
     if: ${{ vars.PREVIEW_ENABLED == 'true' }}
