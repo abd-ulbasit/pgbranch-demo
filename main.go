@@ -21,6 +21,27 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// BRANCH identifies which pgbranch database branch this instance is
+	// wired to (set by the per-PR deploy); reported so the preview is
+	// self-describing, like a Vercel preview.
+	branch := os.Getenv("BRANCH")
+
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"app": "orders-api", "database_branch": branch, "try": "/db"})
+	})
+
+	mux.HandleFunc("GET /db", func(w http.ResponseWriter, r *http.Request) {
+		var users, orders int64
+		err := db.QueryRowContext(r.Context(),
+			`SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM orders)`).Scan(&users, &orders)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]any{"database_branch": branch, "error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"database_branch": branch, "users": users, "orders": orders})
+	})
+
 	mux.HandleFunc("POST /signup", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ Email, FullName string }
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
