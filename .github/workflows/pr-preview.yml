@@ -1,0 +1,128 @@
+# Per-PR app preview on the self-hosted k3s cluster — the "Vercel-style"
+# half of the workflow that pgbranch deliberately doesn't do.
+#
+# pgbranch (via the ghook webhook) already creates the per-PR DATABASE
+# branch and posts its own status/comment. This job deploys the APP for the
+# PR, points it at that branch, and posts a preview-URL comment.
+#
+# A GitHub-hosted runner reaches the Tailscale-private k3s box by joining the
+# tailnet with an ephemeral auth key, then talks to the cluster API directly.
+#
+# Enable by setting repo variable PREVIEW_ENABLED=true and these secrets:
+#   TS_AUTHKEY      ephemeral, reusable Tailscale auth key (tag:ci)
+#   KUBECONFIG_B64  base64 of the k3s kubeconfig (server = Tailscale IP)
+#   PGBRANCH_TOKEN  branchd bearer token
+name: pr-preview
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# single-slot preview (one shared orders-api Deployment + Funnel URL):
+# concurrent PRs reuse the slot, last write wins. DB branches stay per-PR
+# isolated (pgbranch); per-PR preview URLs would add a Traefik ingress.
+concurrency: pr-preview
+
+jobs:
+  preview:
+    if: ${{ vars.PREVIEW_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      PGBRANCH_SERVER: http://100.93.63.123:7070
+      PROXY_SVC: pgbranch-proxy.pgbranch.svc.cluster.local
+      PREVIEW_URL: https://trash.tail15ad63.ts.net:8443
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Join the tailnet
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          kubectl version --client=false -o json >/dev/null && echo "cluster reachable"
+
+      - name: Derive branch + wait for its pgbranch database
+        id: db
+        run: |
+          BRANCH=$(echo "${{ github.head_ref }}" | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-41 | sed 's/-*$//')
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Waiting for pgbranch branch '$BRANCH' (created by the webhook)…"
+          for i in $(seq 1 60); do
+            J=$(curl -s -H "Authorization: Bearer ${{ secrets.PGBRANCH_TOKEN }}" "$PGBRANCH_SERVER/v1/branches/$BRANCH" || true)
+            if [ "$(echo "$J" | jq -r '.state // empty')" = "ready" ]; then
+              PW=$(echo "$J" | jq -r '.password')
+              echo "::add-mask::$PW"
+              echo "PW=$PW" >> "$GITHUB_ENV"
+              echo "branch is ready"; exit 0
+            fi
+            sleep 5
+          done
+          echo "branch never became ready"; exit 1
+
+      - name: Deploy preview app to k3s
+        run: |
+          BRANCH=${{ steps.db.outputs.branch }}
+          kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
+          DSN="host=$PROXY_SVC port=6432 user=postgres password=$PW dbname=postgres@$BRANCH sslmode=disable"
+          kubectl -n demo create secret generic orders-db \
+            --from-literal=dsn="$DSN" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n demo apply -f - <<YAML
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata: { name: orders-api, labels: { app: orders-api } }
+          spec:
+            replicas: 1
+            selector: { matchLabels: { app: orders-api } }
+            template:
+              metadata: { labels: { app: orders-api } }
+              spec:
+                containers:
+                - name: app
+                  image: orders-api:v1
+                  imagePullPolicy: Never
+                  ports: [{ containerPort: 8090 }]
+                  env:
+                  - { name: BRANCH, value: "$BRANCH" }
+                  - name: DATABASE_URL
+                    valueFrom: { secretKeyRef: { name: orders-db, key: dsn } }
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata: { name: orders-api }
+          spec:
+            type: LoadBalancer
+            selector: { app: orders-api }
+            ports: [{ port: 8090, targetPort: 8090 }]
+          YAML
+          kubectl -n demo rollout restart deploy/orders-api
+          kubectl -n demo rollout status deploy/orders-api --timeout=120s
+
+      - name: Comment the preview URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.db.outputs.branch }}
+        run: |
+          MARKER="<!-- pr-preview -->"
+          BODY="$MARKER
+          ### 🚀 Preview deployment (self-hosted k3s)
+
+          | | |
+          |---|---|
+          | **App** | orders-api |
+          | **Status** | ✅ Ready |
+          | **Preview** | ${PREVIEW_URL}/db |
+          | **Database branch** | \`${BRANCH}\` |
+
+          Running in the k3s cluster, reading its per-PR pgbranch database, exposed via Tailscale Funnel."
+          ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$ID" ]; then
+            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$ID -f body="$BODY" >/dev/null
+          else
+            gh api -X POST repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments -f body="$BODY" >/dev/null
+          fi
+          echo "preview comment posted"
