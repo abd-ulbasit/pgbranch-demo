@@ -50,9 +50,6 @@ jobs:
           for i in $(seq 1 60); do
             J=$(curl -s -H "Authorization: Bearer ${{ secrets.PGBRANCH_TOKEN }}" "$PGBRANCH_SERVER/v1/branches/$BRANCH" || true)
             if [ "$(echo "$J" | jq -r '.state // empty')" = "ready" ]; then
-              PW=$(echo "$J" | jq -r '.password')
-              echo "::add-mask::$PW"
-              echo "PW=$PW" >> "$GITHUB_ENV"
               echo "branch is ready"; exit 0
             fi
             sleep 5
@@ -60,9 +57,13 @@ jobs:
           echo "branch never became ready"; exit 1
 
       - name: Deploy preview app
+        env:
+          # inherit-mode: branches share the source password (rotation off,
+          # which is what static-env preview flows like Vercel also need)
+          PGPASSWORD: ${{ secrets.PGBRANCH_DB_PASSWORD }}
         run: |
           BRANCH=${{ steps.db.outputs.branch }}
-          DSN="host=$PROXY_SVC port=6432 user=postgres password=$PW dbname=postgres@$BRANCH sslmode=disable"
+          DSN="host=$PROXY_SVC port=6432 user=postgres password=$PGPASSWORD dbname=postgres@$BRANCH sslmode=disable"
           kubectl -n demo create secret generic orders-db \
             --from-literal=dsn="$DSN" --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n demo apply -f - <<YAML
