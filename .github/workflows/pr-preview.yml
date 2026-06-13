@@ -1,48 +1,44 @@
-# Per-PR app preview on the self-hosted k3s cluster — the "Vercel-style"
-# half of the workflow that pgbranch deliberately doesn't do.
+# Per-PR app preview — the "Vercel-style" half of the workflow that pgbranch
+# deliberately doesn't do. pgbranch (via ghook) creates the per-PR DATABASE
+# branch; this job deploys the APP for the PR, points it at that branch, and
+# posts a preview-URL comment.
 #
-# pgbranch (via the ghook webhook) already creates the per-PR DATABASE
-# branch and posts its own status/comment. This job deploys the APP for the
-# PR, points it at that branch, and posts a preview-URL comment.
+# Cluster-agnostic via repo variables/secrets:
+#   vars.PREVIEW_ENABLED = "true"        gate
+#   vars.PGBRANCH_API    = https://<branchd API LB>:7070
+#   vars.PREVIEW_URL     = http://<orders-api app LB>:8090
+#   secrets.KUBECONFIG_B64 = base64 kubeconfig (scoped SA token; public API)
+#   secrets.PGBRANCH_TOKEN = branchd bearer token
 #
-# A GitHub-hosted runner reaches the Tailscale-private k3s box by joining the
-# tailnet with an ephemeral auth key, then talks to the cluster API directly.
-#
-# Enable by setting repo variable PREVIEW_ENABLED=true and these secrets:
-#   TS_AUTHKEY      ephemeral, reusable Tailscale auth key (tag:ci)
-#   KUBECONFIG_B64  base64 of the k3s kubeconfig (server = Tailscale IP)
-#   PGBRANCH_TOKEN  branchd bearer token
+# On EKS the API/LBs are public, so no tunnel is needed. (The earlier k3s
+# variant joined the tailnet first; that step is gone.)
 name: pr-preview
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# single-slot preview (one shared orders-api Deployment + Funnel URL):
-# concurrent PRs reuse the slot, last write wins. DB branches stay per-PR
-# isolated (pgbranch); per-PR preview URLs would add a Traefik ingress.
 concurrency: pr-preview
+
+permissions:
+  pull-requests: write
+  contents: read
 
 jobs:
   preview:
     if: ${{ vars.PREVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     env:
-      PGBRANCH_SERVER: http://100.93.63.123:7070
+      PGBRANCH_SERVER: ${{ vars.PGBRANCH_API }}
       PROXY_SVC: pgbranch-proxy.pgbranch.svc.cluster.local
-      PREVIEW_URL: https://trash.tail15ad63.ts.net:8443
+      PREVIEW_URL: ${{ vars.PREVIEW_URL }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Join the tailnet
-        uses: tailscale/github-action@v3
-        with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
 
       - name: Configure kubectl
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
-          kubectl version --client=false -o json >/dev/null && echo "cluster reachable"
+          kubectl get ns demo >/dev/null 2>&1 || kubectl create ns demo
 
       - name: Derive branch + wait for its pgbranch database
         id: db
@@ -63,10 +59,9 @@ jobs:
           done
           echo "branch never became ready"; exit 1
 
-      - name: Deploy preview app to k3s
+      - name: Deploy preview app
         run: |
           BRANCH=${{ steps.db.outputs.branch }}
-          kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
           DSN="host=$PROXY_SVC port=6432 user=postgres password=$PW dbname=postgres@$BRANCH sslmode=disable"
           kubectl -n demo create secret generic orders-db \
             --from-literal=dsn="$DSN" --dry-run=client -o yaml | kubectl apply -f -
@@ -82,8 +77,7 @@ jobs:
               spec:
                 containers:
                 - name: app
-                  image: orders-api:v1
-                  imagePullPolicy: Never
+                  image: ghcr.io/abd-ulbasit/orders-api:v1
                   ports: [{ containerPort: 8090 }]
                   env:
                   - { name: BRANCH, value: "$BRANCH" }
@@ -99,7 +93,7 @@ jobs:
             ports: [{ port: 8090, targetPort: 8090 }]
           YAML
           kubectl -n demo rollout restart deploy/orders-api
-          kubectl -n demo rollout status deploy/orders-api --timeout=120s
+          kubectl -n demo rollout status deploy/orders-api --timeout=150s
 
       - name: Comment the preview URL
         env:
@@ -108,7 +102,7 @@ jobs:
         run: |
           MARKER="<!-- pr-preview -->"
           BODY="$MARKER
-          ### 🚀 Preview deployment (self-hosted k3s)
+          ### 🚀 Preview deployment (self-hosted on EKS)
 
           | | |
           |---|---|
@@ -117,7 +111,7 @@ jobs:
           | **Preview** | ${PREVIEW_URL}/db |
           | **Database branch** | \`${BRANCH}\` |
 
-          Running in the k3s cluster, reading its per-PR pgbranch database, exposed via Tailscale Funnel."
+          Running in the EKS cluster, reading its per-PR pgbranch database."
           ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
             --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
           if [ -n "$ID" ]; then
