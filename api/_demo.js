@@ -1,4 +1,4 @@
-// One place that knows whether this deployment still has a pgbranch cluster
+// One place that knows whether this deployment still has a pgoverlay cluster
 // behind it, and how to answer when it does not.
 //
 // The demo ran on a single-node EKS cluster in ap-south-1. That cluster was
@@ -8,10 +8,10 @@
 // Postgres driver's error back to whoever loaded the page.
 //
 // This is env-gated rather than deleted so the wiring stays reusable: fork
-// the repo, point PGBRANCH_HOST / PGBRANCH_PORT / PGPASSWORD at your own
-// pgbranch install, set DEMO_LIVE=true, and these endpoints work again.
+// the repo, point PGOVERLAY_HOST / PGOVERLAY_PORT / PGPASSWORD at your own
+// pgoverlay install, set DEMO_LIVE=true, and these endpoints work again.
 
-const REPO = 'https://github.com/abd-ulbasit/pgbranch-demo';
+const REPO = 'https://github.com/abd-ulbasit/pgoverlay-demo';
 
 const live = process.env.DEMO_LIVE === 'true';
 

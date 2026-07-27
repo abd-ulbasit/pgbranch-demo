@@ -4,4 +4,4 @@ node_modules/
 
 # compiled Go binary — `go build` drops it here, named after the module.
 # It was tracked until 2026-07; a 14 MB darwin/arm64 executable is not source.
-/pgbranch-demo
+/pgoverlay-demo

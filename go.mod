@@ -1,4 +1,4 @@
-module github.com/abd-ulbasit/pgbranch-demo
+module github.com/abd-ulbasit/pgoverlay-demo
 
 go 1.26.2
 

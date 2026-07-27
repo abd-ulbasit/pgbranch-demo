@@ -2,7 +2,7 @@
 -- unique constraint on users.email.
 --
 -- Production has legacy duplicate signups (same email, multiple rows —
--- found by running this migration against the PR's pgbranch branch).
+-- found by running this migration against the PR's pgoverlay branch).
 -- Merge them first: keep the oldest account, repoint its orders.
 UPDATE orders o SET user_id = k.keep_id
 FROM (SELECT email, min(id) AS keep_id

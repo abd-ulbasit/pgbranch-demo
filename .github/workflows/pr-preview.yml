@@ -1,20 +1,20 @@
-# Per-PR app preview — the "Vercel-style" half of the workflow that pgbranch
-# deliberately doesn't do. pgbranch (via ghook) creates the per-PR DATABASE
+# Per-PR app preview — the "Vercel-style" half of the workflow that pgoverlay
+# deliberately doesn't do. pgoverlay (via ghook) creates the per-PR DATABASE
 # branch; this job deploys the APP for the PR, points it at that branch, and
 # posts a preview-URL comment.
 #
 # Cluster-agnostic via repo variables/secrets:
-#   vars.PREVIEW_ENABLED = "true"        gate
-#   vars.PGBRANCH_API    = https://<branchd API LB>:7070
-#   vars.PREVIEW_URL     = http://<orders-api app LB>:8090
-#   secrets.KUBECONFIG_B64 = base64 kubeconfig (scoped SA token; public API)
-#   secrets.PGBRANCH_TOKEN = branchd bearer token
+#   vars.PREVIEW_ENABLED  = "true"        gate
+#   vars.PGOVERLAY_API    = https://<branchd API LB>:7070
+#   vars.PREVIEW_URL      = http://<orders-api app LB>:8090
+#   secrets.KUBECONFIG_B64  = base64 kubeconfig (scoped SA token; public API)
+#   secrets.PGOVERLAY_TOKEN = branchd bearer token
 #
 # On EKS the API/LBs are public, so no tunnel is needed. (The earlier k3s
 # variant joined the tailnet first; that step is gone.)
 #
 # ARCHIVED. The EKS cluster was decommissioned in June 2026 — the branchd API
-# and the app LoadBalancer named in vars.PGBRANCH_API / vars.PREVIEW_URL no
+# and the app LoadBalancer named in vars.PGOVERLAY_API / vars.PREVIEW_URL no
 # longer resolve, so this cannot deploy anything and no longer runs on
 # `pull_request`. Kept in-tree as the reference wiring. To revive it, point
 # the variables below at a live cluster and restore the `pull_request:`
@@ -42,8 +42,8 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     env:
-      PGBRANCH_SERVER: ${{ vars.PGBRANCH_API }}
-      PROXY_SVC: pgbranch-proxy.pgbranch.svc.cluster.local
+      PGOVERLAY_SERVER: ${{ vars.PGOVERLAY_API }}
+      PROXY_SVC: pgoverlay-proxy.pgoverlay.svc.cluster.local
       PREVIEW_URL: ${{ vars.PREVIEW_URL }}
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
             echo "The EKS cluster this demo used was decommissioned in June 2026."
             exit 1
           fi
-          for v in PGBRANCH_SERVER PREVIEW_URL; do
+          for v in PGOVERLAY_SERVER PREVIEW_URL; do
             if [ -z "${!v}" ]; then echo "::error::$v is empty"; exit 1; fi
           done
 
@@ -69,21 +69,21 @@ jobs:
           printf '%s' "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
           kubectl get ns demo >/dev/null 2>&1 || kubectl create ns demo
 
-      - name: Derive branch + wait for its pgbranch database
+      - name: Derive branch + wait for its pgoverlay database
         id: db
         env:
           # via env, never interpolated into the script body: a git ref is
           # attacker-controlled text and `${{ }}` splices it in before the
           # shell ever sees it
           BRANCH_REF: ${{ inputs.branch_ref }}
-          PGBRANCH_TOKEN: ${{ secrets.PGBRANCH_TOKEN }}
+          PGOVERLAY_TOKEN: ${{ secrets.PGOVERLAY_TOKEN }}
         run: |
           BRANCH=$(echo "$BRANCH_REF" | tr '[:upper:]' '[:lower:]' \
             | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-41 | sed 's/-*$//')
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "Waiting for pgbranch branch '$BRANCH' (created by the webhook)…"
+          echo "Waiting for pgoverlay branch '$BRANCH' (created by the webhook)…"
           for i in $(seq 1 60); do
-            J=$(curl -s -H "Authorization: Bearer $PGBRANCH_TOKEN" "$PGBRANCH_SERVER/v1/branches/$BRANCH" || true)
+            J=$(curl -s -H "Authorization: Bearer $PGOVERLAY_TOKEN" "$PGOVERLAY_SERVER/v1/branches/$BRANCH" || true)
             if [ "$(echo "$J" | jq -r '.state // empty')" = "ready" ]; then
               echo "branch is ready"; exit 0
             fi
@@ -95,7 +95,7 @@ jobs:
         env:
           # inherit-mode: branches share the source password (rotation off,
           # which is what static-env preview flows like Vercel also need)
-          PGPASSWORD: ${{ secrets.PGBRANCH_DB_PASSWORD }}
+          PGPASSWORD: ${{ secrets.PGOVERLAY_DB_PASSWORD }}
         run: |
           BRANCH=${{ steps.db.outputs.branch }}
           DSN="host=$PROXY_SVC port=6432 user=postgres password=$PGPASSWORD dbname=postgres@$BRANCH sslmode=disable"
@@ -152,7 +152,7 @@ jobs:
           | **Preview** | ${PREVIEW_URL}/db |
           | **Database branch** | \`${BRANCH}\` |
 
-          Running in the EKS cluster, reading its per-PR pgbranch database."
+          Running in the EKS cluster, reading its per-PR pgoverlay database."
           ID=$(gh api "repos/$REPO/issues/$PR/comments" \
             --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
           if [ -n "$ID" ]; then

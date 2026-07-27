@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Brings up a fresh public TCP tunnel to the local pgbranch proxy and rewires
+# Brings up a fresh public TCP tunnel to the local pgoverlay proxy and rewires
 # everything that depends on the (random, per-session) tunnel address:
-#   - GitHub Actions repo variable PGBRANCH_PROXY_HOST  (pr-db-check workflow)
-#   - Vercel env vars PGBRANCH_HOST / PGBRANCH_PORT     (preview + production)
+#   - GitHub Actions repo variable PGOVERLAY_PROXY_HOST (pr-db-check workflow)
+#   - Vercel env vars PGOVERLAY_HOST / PGOVERLAY_PORT   (preview + production)
 #   - redeploys the latest preview & production so they pick the new address
 #
 # Free pinggy tunnels last 60 minutes — rerun this when the tunnel dies.
@@ -29,10 +29,10 @@ done
 HOST="${ADDR%%:*}" PORT="${ADDR##*:}"
 echo "tunnel up: $ADDR (pid $TUNNEL_PID)"
 
-gh variable set PGBRANCH_PROXY_HOST --body "$ADDR"
-echo "github var PGBRANCH_PROXY_HOST=$ADDR"
+gh variable set PGOVERLAY_PROXY_HOST --body "$ADDR"
+echo "github var PGOVERLAY_PROXY_HOST=$ADDR"
 
-node scripts/vercel-env-upsert.js "PGBRANCH_HOST=$HOST" "PGBRANCH_PORT=$PORT" |
+node scripts/vercel-env-upsert.js "PGOVERLAY_HOST=$HOST" "PGOVERLAY_PORT=$PORT" |
 while read -r env url; do
     echo "redeploying $env ($url)"
     vercel redeploy "$url" >/dev/null 2>&1 || echo "  redeploy failed for $url (do it manually)"

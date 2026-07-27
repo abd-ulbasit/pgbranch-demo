@@ -1,4 +1,4 @@
-// A deliberately small orders API used to demonstrate pgbranch's
+// A deliberately small orders API used to demonstrate pgoverlay's
 // branch-per-PR workflow. See README.md.
 package main
 

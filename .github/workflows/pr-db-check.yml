@@ -1,30 +1,30 @@
-# Runs the repo's migrations against a PR's pgbranch database branch — real
-# production-shaped data, created in ~2s by the pgbranch webhook when the PR
+# Runs the repo's migrations against a PR's pgoverlay database branch — real
+# production-shaped data, created in ~2s by the pgoverlay webhook when the PR
 # was opened. This is the job that produced PR #1's recorded failure.
 #
 # ARCHIVED. The demo's EKS cluster was decommissioned in June 2026, so there
-# is no pgbranch proxy left for this to reach and it no longer runs on
+# is no pgoverlay proxy left for this to reach and it no longer runs on
 # `pull_request`. It is kept in-tree as the reference wiring: this file is
 # what "CI runs your migrations against a branch of prod" actually looks like.
 #
 # It last did real work on 2026-06-11 (10 successful runs, plus 2 genuine
 # failures on feat/signup-stats). From 2026-06-13 it skipped every single run,
-# because the job gated on `vars.PGBRANCH_PROXY_HOST` and the move to EKS
+# because the job gated on `vars.PGOVERLAY_PROXY_HOST` and the move to EKS
 # stopped setting that variable — the gate silently went permanently false.
 # That silent-skip gate is gone: the preflight below fails loudly instead, so
 # a run can never again look like it passed when it did nothing.
 #
-# To use it against your own pgbranch install, set:
-#   vars.PGBRANCH_PROXY_HOST      e.g. "pgbranch.internal:6432"
-#   vars.PGBRANCH_PG_USER         optional, defaults to "postgres"
-#   secrets.PGBRANCH_PG_PASSWORD
+# To use it against your own pgoverlay install, set:
+#   vars.PGOVERLAY_PROXY_HOST      e.g. "pgoverlay.internal:6432"
+#   vars.PGOVERLAY_PG_USER         optional, defaults to "postgres"
+#   secrets.PGOVERLAY_PG_PASSWORD
 # and add the `pull_request:` trigger back.
 name: pr-db-check
 on:
   workflow_dispatch:
     inputs:
       branch_ref:
-        description: 'Git ref whose pgbranch database branch to migrate (e.g. feat/order-tags)'
+        description: 'Git ref whose pgoverlay database branch to migrate (e.g. feat/order-tags)'
         required: true
         type: string
 
@@ -34,28 +34,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Preflight — require the pgbranch proxy to be configured
+      - name: Preflight — require the pgoverlay proxy to be configured
         env:
-          PGBRANCH_PROXY_HOST: ${{ vars.PGBRANCH_PROXY_HOST }}
+          PGOVERLAY_PROXY_HOST: ${{ vars.PGOVERLAY_PROXY_HOST }}
         run: |
-          if [ -z "$PGBRANCH_PROXY_HOST" ]; then
-            echo "::error::vars.PGBRANCH_PROXY_HOST is not set — there is no pgbranch proxy to migrate against."
+          if [ -z "$PGOVERLAY_PROXY_HOST" ]; then
+            echo "::error::vars.PGOVERLAY_PROXY_HOST is not set — there is no pgoverlay proxy to migrate against."
             echo "The demo cluster this repo used was decommissioned in June 2026."
-            echo "Set vars.PGBRANCH_PROXY_HOST and secrets.PGBRANCH_PG_PASSWORD to point at your own install."
+            echo "Set vars.PGOVERLAY_PROXY_HOST and secrets.PGOVERLAY_PG_PASSWORD to point at your own install."
             exit 1
           fi
-          echo "pgbranch proxy: $PGBRANCH_PROXY_HOST"
+          echo "pgoverlay proxy: $PGOVERLAY_PROXY_HOST"
 
       - name: Apply migrations to the branch's database
         env:
-          PGBRANCH_PROXY_HOST: ${{ vars.PGBRANCH_PROXY_HOST }}
-          PGPASSWORD: ${{ secrets.PGBRANCH_PG_PASSWORD }}
+          PGOVERLAY_PROXY_HOST: ${{ vars.PGOVERLAY_PROXY_HOST }}
+          PGPASSWORD: ${{ secrets.PGOVERLAY_PG_PASSWORD }}
           BRANCH_REF: ${{ inputs.branch_ref }}
         run: |
-          export PGHOST="${PGBRANCH_PROXY_HOST%%:*}"
-          export PGPORT="${PGBRANCH_PROXY_HOST##*:}"
-          export PGUSER="${{ vars.PGBRANCH_PG_USER || 'postgres' }}"
-          # the database name routes through the pgbranch proxy to the ref's
+          export PGHOST="${PGOVERLAY_PROXY_HOST%%:*}"
+          export PGPORT="${PGOVERLAY_PROXY_HOST##*:}"
+          export PGUSER="${{ vars.PGOVERLAY_PG_USER || 'postgres' }}"
+          # the database name routes through the pgoverlay proxy to the ref's
           # branch, named after the git branch (ghook git-branch naming)
           BRANCH=$(echo "$BRANCH_REF" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-41 | sed 's/-*$//')
           export PGDATABASE="postgres@$BRANCH"

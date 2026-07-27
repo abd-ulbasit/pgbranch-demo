@@ -1,11 +1,11 @@
-// Each Vercel preview deployment talks to its OWN pgbranch database branch.
+// Each Vercel preview deployment talks to its OWN pgoverlay database branch.
 // No per-PR secrets, no injection step: Vercel already exposes the PR number
-// (VERCEL_GIT_PULL_REQUEST_ID), and the pgbranch proxy routes by database
+// (VERCEL_GIT_PULL_REQUEST_ID), and the pgoverlay proxy routes by database
 // name — so the connection is fully derived from three static env vars
-// (PGBRANCH_HOST, PGBRANCH_PORT, PGPASSWORD) plus the PR number.
+// (PGOVERLAY_HOST, PGOVERLAY_PORT, PGPASSWORD) plus the PR number.
 const { Pool } = require('pg');
 
-// pgbranch names PR branches after the git ref (sanitized the same way),
+// pgoverlay names PR branches after the git ref (sanitized the same way),
 // and VERCEL_GIT_COMMIT_REF is present from the very first preview build —
 // no PR-association timing race, nothing injected per deployment.
 const sanitize = (ref) =>
@@ -15,11 +15,11 @@ const ref = process.env.VERCEL_GIT_COMMIT_REF;
 const isPreview = process.env.VERCEL_ENV === 'preview';
 const branch = isPreview && ref
   ? sanitize(ref)
-  : process.env.PGBRANCH_DEFAULT_BRANCH || 'main-stable';
+  : process.env.PGOVERLAY_DEFAULT_BRANCH || 'main-stable';
 
 const pool = new Pool({
-  host: process.env.PGBRANCH_HOST,
-  port: Number(process.env.PGBRANCH_PORT || 6432),
+  host: process.env.PGOVERLAY_HOST,
+  port: Number(process.env.PGOVERLAY_PORT || 6432),
   user: process.env.PGUSER || 'postgres',
   password: process.env.PGPASSWORD,
   database: `postgres@${branch}`,

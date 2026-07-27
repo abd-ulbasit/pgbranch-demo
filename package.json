@@ -1,5 +1,5 @@
 {
-  "name": "pgbranch-demo",
+  "name": "pgoverlay-demo",
   "private": true,
   "dependencies": {
     "pg": "^8.13.1"

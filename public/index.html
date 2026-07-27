@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pgbranch-demo — archived</title>
+  <title>pgoverlay-demo — archived</title>
   <style>
     body { font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
            max-width: 44rem; margin: 4rem auto; padding: 0 1rem;
@@ -19,13 +19,13 @@
   </style>
 </head>
 <body>
-  <h1>pgbranch-demo</h1>
-  <p class="sub dim">A demo of <a href="https://github.com/abd-ulbasit/pgbranch">pgbranch</a>:
+  <h1>pgoverlay-demo</h1>
+  <p class="sub dim">A demo of <a href="https://github.com/abd-ulbasit/pgoverlay">pgoverlay</a>:
      branch-per-PR Postgres databases.</p>
 
   <div class="note">
     <p><strong>This demo is archived.</strong> The single-node EKS cluster that
-       ran the pgbranch stack was torn down in June 2026, so there is no live
+       ran the pgoverlay stack was torn down in June 2026, so there is no live
        database to answer from. Nothing here is served from a real branch
        anymore, and the API paths return <code>410 Gone</code> rather than
        pretending otherwise.</p>
@@ -36,24 +36,29 @@
      <em>fails</em> against real production data.</p>
 
   <p><strong>That run is recorded and still readable:</strong>
-     <a href="https://github.com/abd-ulbasit/pgbranch-demo/pull/1">PR&nbsp;#1</a>
+     <a href="https://github.com/abd-ulbasit/pgoverlay-demo/pull/1">PR&nbsp;#1</a>
      — a <code>UNIQUE (email)</code> migration that was green locally, then hit
      37 legacy duplicate signups on a masked copy-on-write clone of an
      80k-user / 400k-order production database. The PR comments carry the
      actual error and the fix. That, not this page, is the artifact.</p>
 
+  <p class="dim">Those comments say <code>pgbranch</code>, which is what this
+     project was called when the run happened. They are the bot's own output
+     from a real run, so they are left exactly as posted rather than rewritten
+     to match the later name.</p>
+
   <ul>
-    <li><a href="https://github.com/abd-ulbasit/pgbranch-demo/pull/1">PR #1</a>
+    <li><a href="https://github.com/abd-ulbasit/pgoverlay-demo/pull/1">PR #1</a>
         <span class="dim">— the recorded run: branch created, migration failed on real data, fixed, branch destroyed on merge</span></li>
-    <li><a href="https://github.com/abd-ulbasit/pgbranch-demo">Source</a>
+    <li><a href="https://github.com/abd-ulbasit/pgoverlay-demo">Source</a>
         <span class="dim">— the app, migrations, and the CI wiring that drove it</span></li>
-    <li><a href="https://github.com/abd-ulbasit/pgbranch">pgbranch</a>
+    <li><a href="https://github.com/abd-ulbasit/pgoverlay">pgoverlay</a>
         <span class="dim">— the tool itself, which is maintained</span></li>
   </ul>
 
   <p class="dim">Running it yourself: the endpoints under <code>/api</code> still
-     work against a real pgbranch install — point
-     <code>PGBRANCH_HOST</code>/<code>PGBRANCH_PORT</code>/<code>PGPASSWORD</code>
+     work against a real pgoverlay install — point
+     <code>PGOVERLAY_HOST</code>/<code>PGOVERLAY_PORT</code>/<code>PGPASSWORD</code>
      at it and set <code>DEMO_LIVE=true</code>.</p>
 </body>
 </html>

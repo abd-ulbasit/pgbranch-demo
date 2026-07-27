@@ -1,13 +1,13 @@
-# pgbranch-demo: branch-per-PR databases in a real workflow
+# pgoverlay-demo: branch-per-PR databases in a real workflow
 
-A small orders API built to demonstrate [pgbranch](https://github.com/abd-ulbasit/pgbranch)
+A small orders API built to demonstrate [pgoverlay](https://github.com/abd-ulbasit/pgoverlay)
 in day-to-day development: every pull request gets its own disposable
 copy-on-write copy of the production database, with PII masked before anyone
 can connect.
 
-> **This demo is archived — read [PR #1](https://github.com/abd-ulbasit/pgbranch-demo/pull/1) instead.**
+> **This demo is archived — read [PR #1](https://github.com/abd-ulbasit/pgoverlay-demo/pull/1) instead.**
 >
-> The single-node EKS cluster that ran the pgbranch stack was decommissioned
+> The single-node EKS cluster that ran the pgoverlay stack was decommissioned
 > in June 2026. The hosted app, the branch databases and the LoadBalancers
 > are gone, so there is nothing live to click: the `/api` endpoints answer
 > `410 Gone` and the deployed page says so.
@@ -15,9 +15,11 @@ can connect.
 > **What survives is the thing worth showing.** PR #1 is a complete recorded
 > run of the workflow, comments and all. The point of this repo was never the
 > uptime — it was that a migration failed on a PR instead of in production,
-> and you can still read exactly how.
+> and you can still read exactly how. (Those comments were posted before the
+> project was renamed, so they say `pgbranch`. They are left untouched on
+> purpose; see [below](#the-recorded-run-pr-1).)
 >
-> [pgbranch](https://github.com/abd-ulbasit/pgbranch) itself is a separate,
+> [pgoverlay](https://github.com/abd-ulbasit/pgoverlay) itself is a separate,
 > maintained repo. Only this demo's hosting is retired.
 
 ## Why
@@ -25,13 +27,20 @@ can connect.
 The classic failure mode this demo reproduces: a schema migration that
 passes on your empty local database but **fails against real production
 data** (duplicate rows, NULLs, weird encodings — things test fixtures never
-have). You find out during the deploy. With pgbranch you find out on the PR,
+have). You find out during the deploy. With pgoverlay you find out on the PR,
 against a masked clone of prod, minutes after pushing.
 
-## The recorded run: [PR #1](https://github.com/abd-ulbasit/pgbranch-demo/pull/1)
+## The recorded run: [PR #1](https://github.com/abd-ulbasit/pgoverlay-demo/pull/1)
 
 This is the evidence. It is two comments on a merged pull request, and it
 takes about a minute to read.
+
+**The comments say `pgbranch`, which is what this project was called when
+they were written.** The run happened in June 2026; the rename to `pgoverlay`
+came afterwards. The comments are the bot's own output from an actual run, so
+they are left exactly as posted. Rewriting them to say `pgoverlay` would turn
+a record of what ran into a reconstruction of it, which is the one thing
+evidence must not be. Same tool, same run, earlier name.
 
 1. The PR adds idempotent signup, which needs `UNIQUE (email)`. The migration
    **passed on an empty local dev database**.
@@ -60,7 +69,7 @@ takes about a minute to read.
 
 That is the entire pitch: the deploy-time surprise moved to the PR.
 
-[PR #3](https://github.com/abd-ulbasit/pgbranch-demo/pull/3) is a second
+[PR #3](https://github.com/abd-ulbasit/pgoverlay-demo/pull/3) is a second
 recorded run, useful because its CI failed twice on the way to green.
 
 ## How it was wired
@@ -71,9 +80,9 @@ only — they cannot run against the cluster that no longer exists.
 
 ### EKS (the final setup)
 
-The whole pgbranch stack ran in a single-node EKS cluster
-([Terraform](https://github.com/abd-ulbasit/pgbranch/tree/main/deploy/terraform/eks),
-[walkthrough](https://github.com/abd-ulbasit/pgbranch/blob/main/docs/eks.md)):
+The whole pgoverlay stack ran in a single-node EKS cluster
+([Terraform](https://github.com/abd-ulbasit/pgoverlay/tree/main/deploy/terraform/eks),
+[walkthrough](https://github.com/abd-ulbasit/pgoverlay/blob/main/docs/eks.md)):
 branchd, the webhook service, the "production" Postgres, and every branch pod.
 
 - GitHub posted `pull_request` webhooks **directly** to the in-cluster webhook
@@ -83,8 +92,8 @@ branchd, the webhook service, the "production" Postgres, and every branch pod.
 - The app derived its branch from its own git ref, so there was zero per-PR
   configuration anywhere.
 
-Deploying it surfaced three real pgbranch bugs, written up in the
-[EKS doc](https://github.com/abd-ulbasit/pgbranch/blob/main/docs/eks.md#what-deploying-here-taught-us-three-real-bugs).
+Deploying it surfaced three real pgoverlay bugs, written up in the
+[EKS doc](https://github.com/abd-ulbasit/pgoverlay/blob/main/docs/eks.md#what-deploying-here-taught-us-three-real-bugs).
 
 ### The earlier zero-infra variant (laptop + tunnels)
 
@@ -97,16 +106,16 @@ restarted the public TCP tunnel and rewired GitHub to it.
 docker run -d --name pgdemo-prod -e POSTGRES_PASSWORD=... -p 5499:5432 postgres:16
 #    + add "host replication all all scram-sha-256" to its pg_hba.conf
 
-# 2. pgbranch control plane
-PGBRANCH_TOKEN=... branchd --api-addr :7070 --pg-addr :6432
+# 2. pgoverlay control plane
+PGOVERLAY_TOKEN=... branchd --api-addr :7070 --pg-addr :6432
 pgb source add prod --host host.docker.internal --port 5499 --pg-version 16
 pgb source set-mask prod mask-pii.sql        # deterministic PII masking
 
 # 3. branch-per-PR webhook service + forwarder
 GHOOK_WEBHOOK_SECRET=... GHOOK_SOURCE=prod \
-GHOOK_PGBRANCH_SERVER=http://localhost:7070 GHOOK_PGBRANCH_TOKEN=... \
+GHOOK_PGOVERLAY_SERVER=http://localhost:7070 GHOOK_PGOVERLAY_TOKEN=... \
 GHOOK_GITHUB_TOKEN=$(gh auth token) GHOOK_PROXY_HOST=localhost:6432 \
-GHOOK_REPOS=<owner>/<repo> GHOOK_RESET_ON_PUSH=true pgbranch-github
+GHOOK_REPOS=<owner>/<repo> GHOOK_RESET_ON_PUSH=true pgoverlay-github
 npx smee-client --url https://smee.io/<channel> --target http://localhost:8080/webhook
 
 # 4. repo webhook: pull_request events -> the smee channel (same secret)
@@ -115,14 +124,14 @@ npx smee-client --url https://smee.io/<channel> --target http://localhost:8080/w
 In this setup the webhook named branches `pr-<N>` (as in PR #1); the later
 EKS setup named them after the git branch instead.
 
-## Running it against your own pgbranch
+## Running it against your own pgoverlay
 
-Nothing here is pinned to the dead cluster. Point it at a pgbranch install:
+Nothing here is pinned to the dead cluster. Point it at a pgoverlay install:
 
 ```sh
 # the API endpoints
 DEMO_LIVE=true \
-PGBRANCH_HOST=<proxy host> PGBRANCH_PORT=6432 PGPASSWORD=<pw> \
+PGOVERLAY_HOST=<proxy host> PGOVERLAY_PORT=6432 PGPASSWORD=<pw> \
   vercel dev            # or any Node host; /api/*.js are plain handlers
 
 # migrations, by hand, against one branch
@@ -136,8 +145,8 @@ DATABASE_URL='postgres://postgres:pw@<proxy host>:6432/postgres@pr-1' go run .
 `DEMO_LIVE` is the switch that turns the `410 Gone` responses back into real
 queries; without it the endpoints refuse to pretend they have a database.
 
-To restore the CI integration, set `vars.PGBRANCH_PROXY_HOST` and
-`secrets.PGBRANCH_PG_PASSWORD` and put the `pull_request:` trigger back in
+To restore the CI integration, set `vars.PGOVERLAY_PROXY_HOST` and
+`secrets.PGOVERLAY_PG_PASSWORD` and put the `pull_request:` trigger back in
 `.github/workflows/pr-db-check.yml`.
 
 ## Layout
@@ -152,4 +161,4 @@ To restore the CI integration, set `vars.PGBRANCH_PROXY_HOST` and
 
 ## Licence
 
-Apache-2.0, same as pgbranch. See [LICENSE](LICENSE).
+Apache-2.0, same as pgoverlay. See [LICENSE](LICENSE).
