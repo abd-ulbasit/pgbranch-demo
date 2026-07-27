@@ -1,8 +1,10 @@
 // POST /api/signup {email, full_name} — idempotent signup (PR #1's feature).
 // Writes land only in THIS deployment's database branch.
 const { pool, branch } = require('./_db');
+const { live, gone, dbError } = require('./_demo');
 
 module.exports = async (req, res) => {
+  if (!live) return gone(res);
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' });
     return;
@@ -21,6 +23,7 @@ module.exports = async (req, res) => {
     );
     res.status(200).json({ id: rows[0].id, database_branch: branch });
   } catch (err) {
-    res.status(500).json({ database_branch: branch, error: err.message });
+    // a failed INSERT is a server-side fault, not an unreachable branch
+    dbError(res, err, branch, 500);
   }
 };

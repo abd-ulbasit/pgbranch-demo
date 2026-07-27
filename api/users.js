@@ -1,7 +1,9 @@
 // GET /api/users — signup volume for the last 30 days.
 const { pool, branch } = require('./_db');
+const { live, gone, dbError } = require('./_demo');
 
 module.exports = async (req, res) => {
+  if (!live) return gone(res);
   try {
     const { rows } = await pool.query(`
       SELECT count(*) AS total,
@@ -9,6 +11,6 @@ module.exports = async (req, res) => {
       FROM users`);
     res.status(200).json({ database_branch: branch, ...rows[0] });
   } catch (err) {
-    res.status(503).json({ database_branch: branch, error: err.message });
+    dbError(res, err, branch);
   }
 };

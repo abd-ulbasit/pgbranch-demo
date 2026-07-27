@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pgbranch-demo</title>
+  <title>pgbranch-demo — archived</title>
   <style>
     body { font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
            max-width: 44rem; margin: 4rem auto; padding: 0 1rem;
@@ -11,22 +11,49 @@
     a { color: #94e2d5; }
     code { background: #313244; padding: .1rem .35rem; border-radius: 4px; }
     .dim { color: #9399b2; }
+    .note { border-left: 3px solid #f9e2af; padding: .1rem 0 .1rem 1rem;
+            margin: 1.5rem 0; }
+    .note strong { color: #f9e2af; }
+    h1 { margin-bottom: .2rem; }
+    .sub { margin-top: 0; }
   </style>
 </head>
 <body>
   <h1>pgbranch-demo</h1>
-  <p>Every pull request on <a href="https://github.com/abd-ulbasit/pgbranch-demo">this repo</a>
-     gets its own disposable, PII-masked clone of the production database —
-     created in seconds by <a href="https://github.com/abd-ulbasit/pgbranch">pgbranch</a>
-     running on EKS. This deployment is connected to the database branch
-     matching its git context.</p>
+  <p class="sub dim">A demo of <a href="https://github.com/abd-ulbasit/pgbranch">pgbranch</a>:
+     branch-per-PR Postgres databases.</p>
+
+  <div class="note">
+    <p><strong>This demo is archived.</strong> The single-node EKS cluster that
+       ran the pgbranch stack was torn down in June 2026, so there is no live
+       database to answer from. Nothing here is served from a real branch
+       anymore, and the API paths return <code>410 Gone</code> rather than
+       pretending otherwise.</p>
+  </div>
+
+  <p>The demo showed the failure mode that branch-per-PR databases exist to
+     catch: a migration that passes against an empty local database and
+     <em>fails</em> against real production data.</p>
+
+  <p><strong>That run is recorded and still readable:</strong>
+     <a href="https://github.com/abd-ulbasit/pgbranch-demo/pull/1">PR&nbsp;#1</a>
+     — a <code>UNIQUE (email)</code> migration that was green locally, then hit
+     37 legacy duplicate signups on a masked copy-on-write clone of an
+     80k-user / 400k-order production database. The PR comments carry the
+     actual error and the fix. That, not this page, is the artifact.</p>
+
   <ul>
-    <li><a href="/api/db">/api/db</a> <span class="dim">— which branch am I on, and what's in it?</span></li>
-    <li><a href="/api/users">/api/users</a> <span class="dim">— signup volume</span></li>
-    <li><a href="/api/stats">/api/stats</a> <span class="dim">— top customers by lifetime spend</span></li>
-    <li><code>POST /api/signup</code> <span class="dim">— idempotent signup (writes stay in this branch)</span></li>
+    <li><a href="https://github.com/abd-ulbasit/pgbranch-demo/pull/1">PR #1</a>
+        <span class="dim">— the recorded run: branch created, migration failed on real data, fixed, branch destroyed on merge</span></li>
+    <li><a href="https://github.com/abd-ulbasit/pgbranch-demo">Source</a>
+        <span class="dim">— the app, migrations, and the CI wiring that drove it</span></li>
+    <li><a href="https://github.com/abd-ulbasit/pgbranch">pgbranch</a>
+        <span class="dim">— the tool itself, which is maintained</span></li>
   </ul>
-  <p class="dim">Previews answer from <code>postgres@pr-&lt;N&gt;</code>;
-     production answers from <code>postgres@main-stable</code>.</p>
+
+  <p class="dim">Running it yourself: the endpoints under <code>/api</code> still
+     work against a real pgbranch install — point
+     <code>PGBRANCH_HOST</code>/<code>PGBRANCH_PORT</code>/<code>PGPASSWORD</code>
+     at it and set <code>DEMO_LIVE=true</code>.</p>
 </body>
 </html>

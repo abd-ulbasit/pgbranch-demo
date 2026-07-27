@@ -1,7 +1,9 @@
 // GET /api/db — which database branch is this deployment on, and what's in it?
 const { pool, branch } = require('./_db');
+const { live, gone, dbError } = require('./_demo');
 
 module.exports = async (req, res) => {
+  if (!live) return gone(res);
   try {
     const { rows } = await pool.query(`
       SELECT (SELECT count(*) FROM users)  AS users,
@@ -15,6 +17,6 @@ module.exports = async (req, res) => {
               FROM (SELECT version AS v FROM schema_migrations) m) AS migrations`);
     res.status(200).json({ database_branch: branch, ...rows[0] });
   } catch (err) {
-    res.status(503).json({ database_branch: branch, error: err.message });
+    dbError(res, err, branch);
   }
 };

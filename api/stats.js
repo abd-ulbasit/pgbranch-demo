@@ -1,7 +1,9 @@
 // GET /api/stats — top customers by lifetime spend.
 const { pool, branch } = require('./_db');
+const { live, gone, dbError } = require('./_demo');
 
 module.exports = async (req, res) => {
+  if (!live) return gone(res);
   try {
     const { rows } = await pool.query(`
       SELECT u.id, u.full_name, count(o.id) AS orders,
@@ -13,7 +15,7 @@ module.exports = async (req, res) => {
       LIMIT 5`);
     res.status(200).json({ database_branch: branch, top_customers: rows });
   } catch (err) {
-    res.status(503).json({ database_branch: branch, error: err.message });
+    dbError(res, err, branch);
   }
 };
 
