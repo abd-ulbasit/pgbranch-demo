@@ -12,10 +12,25 @@
 #
 # On EKS the API/LBs are public, so no tunnel is needed. (The earlier k3s
 # variant joined the tailnet first; that step is gone.)
+#
+# ARCHIVED. The EKS cluster was decommissioned in June 2026 — the branchd API
+# and the app LoadBalancer named in vars.PGBRANCH_API / vars.PREVIEW_URL no
+# longer resolve, so this cannot deploy anything and no longer runs on
+# `pull_request`. Kept in-tree as the reference wiring. To revive it, point
+# the variables below at a live cluster and restore the `pull_request:`
+# trigger.
 name: pr-preview
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number to deploy a preview for and comment on'
+        required: true
+        type: string
+      branch_ref:
+        description: 'Git ref of that PR (e.g. feat/order-tags)'
+        required: true
+        type: string
 
 concurrency: pr-preview
 
@@ -25,7 +40,6 @@ permissions:
 
 jobs:
   preview:
-    if: ${{ vars.PREVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     env:
       PGBRANCH_SERVER: ${{ vars.PGBRANCH_API }}
@@ -34,21 +48,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # was a job-level `if: vars.PREVIEW_ENABLED == 'true'`, which turned an
+      # unconfigured repo into a green-looking skip. Fail loudly instead.
+      - name: Preflight — require a live cluster to deploy to
+        run: |
+          if [ "${{ vars.PREVIEW_ENABLED }}" != "true" ]; then
+            echo "::error::vars.PREVIEW_ENABLED is not 'true' — previews are off."
+            echo "The EKS cluster this demo used was decommissioned in June 2026."
+            exit 1
+          fi
+          for v in PGBRANCH_SERVER PREVIEW_URL; do
+            if [ -z "${!v}" ]; then echo "::error::$v is empty"; exit 1; fi
+          done
+
       - name: Configure kubectl
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          printf '%s' "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
           kubectl get ns demo >/dev/null 2>&1 || kubectl create ns demo
 
       - name: Derive branch + wait for its pgbranch database
         id: db
+        env:
+          # via env, never interpolated into the script body: a git ref is
+          # attacker-controlled text and `${{ }}` splices it in before the
+          # shell ever sees it
+          BRANCH_REF: ${{ inputs.branch_ref }}
+          PGBRANCH_TOKEN: ${{ secrets.PGBRANCH_TOKEN }}
         run: |
-          BRANCH=$(echo "${{ github.head_ref }}" | tr '[:upper:]' '[:lower:]' \
+          BRANCH=$(echo "$BRANCH_REF" | tr '[:upper:]' '[:lower:]' \
             | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-41 | sed 's/-*$//')
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "Waiting for pgbranch branch '$BRANCH' (created by the webhook)…"
           for i in $(seq 1 60); do
-            J=$(curl -s -H "Authorization: Bearer ${{ secrets.PGBRANCH_TOKEN }}" "$PGBRANCH_SERVER/v1/branches/$BRANCH" || true)
+            J=$(curl -s -H "Authorization: Bearer $PGBRANCH_TOKEN" "$PGBRANCH_SERVER/v1/branches/$BRANCH" || true)
             if [ "$(echo "$J" | jq -r '.state // empty')" = "ready" ]; then
               echo "branch is ready"; exit 0
             fi
@@ -100,7 +135,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.db.outputs.branch }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr_number }}
         run: |
+          case "$PR" in
+            ''|*[!0-9]*) echo "::error::pr_number must be numeric, got '$PR'"; exit 1 ;;
+          esac
           MARKER="<!-- pr-preview -->"
           BODY="$MARKER
           ### 🚀 Preview deployment (self-hosted on EKS)
@@ -113,11 +153,11 @@ jobs:
           | **Database branch** | \`${BRANCH}\` |
 
           Running in the EKS cluster, reading its per-PR pgbranch database."
-          ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+          ID=$(gh api "repos/$REPO/issues/$PR/comments" \
             --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
           if [ -n "$ID" ]; then
-            gh api -X PATCH repos/${{ github.repository }}/issues/comments/$ID -f body="$BODY" >/dev/null
+            gh api -X PATCH "repos/$REPO/issues/comments/$ID" -f body="$BODY" >/dev/null
           else
-            gh api -X POST repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments -f body="$BODY" >/dev/null
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$BODY" >/dev/null
           fi
           echo "preview comment posted"
